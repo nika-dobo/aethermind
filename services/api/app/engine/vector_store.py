@@ -1,4 +1,4 @@
-"""Lightweight in-memory TF-IDF cosine-similarity vector store."""
+"""Hybrid TF-IDF cosine-similarity vector store with tag boosting and highlights."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ class IndexedDocument:
     title: str
     content: str
     tags: tuple[str, ...] = ()
+    category: str = "General"
     term_counts: Counter[str] = field(default_factory=Counter)
 
 
@@ -33,7 +34,10 @@ class SearchResult:
 
     doc_id: str
     title: str
+    category: str
+    tags: list[str]
     score: float
+    matched_terms: list[str]
     snippet: str
 
 
@@ -49,18 +53,26 @@ class LocalVectorStore:
         title: str,
         content: str,
         tags: list[str] | tuple[str, ...] = (),
+        category: str = "General",
     ) -> IndexedDocument:
         """Index or replace a document by ID."""
-        tokens = tokenize(f"{title} {' '.join(tags)} {content}")
+        # Repeat title & tags lightly so structural metadata carries higher retrieval weight.
+        weighted_text = f"{title} {title} {' '.join(tags)} {' '.join(tags)} {category} {content}"
+        tokens = tokenize(weighted_text)
         doc = IndexedDocument(
             doc_id=doc_id,
             title=title,
             content=content,
             tags=tuple(tags),
+            category=category,
             term_counts=Counter(tokens),
         )
         self._docs[doc_id] = doc
         return doc
+
+    def remove(self, doc_id: str) -> bool:
+        """Remove a document from the in-memory index."""
+        return self._docs.pop(doc_id, None) is not None
 
     def list_documents(self) -> list[IndexedDocument]:
         """Return all indexed documents."""
@@ -93,18 +105,24 @@ class LocalVectorStore:
             if doc_norm == 0.0:
                 continue
 
-            dot = sum(query_vec[t] * doc_vec.get(t, 0.0) for t in query_vec)
-            score = dot / (query_norm * doc_norm)
-            if score > 0.0:
-                snippet = doc.content[:180] + ("..." if len(doc.content) > 180 else "")
-                results.append(
-                    SearchResult(
-                        doc_id=doc.doc_id,
-                        title=doc.title,
-                        score=round(score, 4),
-                        snippet=snippet,
-                    )
+            matched = [t for t in query_vec if t in doc.term_counts]
+            if not matched:
+                continue
+
+            dot = sum(query_vec[t] * doc_vec[t] for t in matched)
+            score = min(1.0, dot / (query_norm * doc_norm))
+            snippet = doc.content[:200] + ("..." if len(doc.content) > 200 else "")
+            results.append(
+                SearchResult(
+                    doc_id=doc.doc_id,
+                    title=doc.title,
+                    category=doc.category,
+                    tags=list(doc.tags),
+                    score=round(score, 4),
+                    matched_terms=sorted(set(matched)),
+                    snippet=snippet,
                 )
+            )
 
         results.sort(key=lambda item: item.score, reverse=True)
         return results[:top_k]

@@ -6,10 +6,10 @@
 
 ## ✨ Planned Architecture & Core Capabilities
 
-- **Multi-Agent Orchestration Pipeline:** Coordinated agents (`Researcher` → `Synthesizer` → `Critic`) streaming reasoning steps over WebSockets.
-- **Live Knowledge Graph Canvas:** Interactive node-and-edge graph linking concepts, sources, tasks, and agent outputs.
-- **Hybrid Vector Search Engine:** Semantic similarity retrieval over workspace documents, notes, and agent memory.
-- **Real-Time Collaborative Workspace:** Live run logs, inspectable node provenance, and replayable execution traces.
+- **Multi-Agent Orchestration Pipeline:** Coordinated 4-stage pipeline (`Planner` → `Researcher` → `Synthesizer` → `Critic`) streaming reasoning steps and latency telemetry over WebSockets.
+- **Live Knowledge Graph Canvas:** Interactive pan, zoom, and draggable SVG node-and-edge graph linking objectives, agents, retrieved vector evidence, and synthesized blueprints with a Node Inspector.
+- **Hybrid Vector Search Engine:** TF-IDF cosine-similarity retrieval with metadata boosting, matched-term highlights, and live node ingestion.
+- **SQLite Persistence & Run Replay:** Persists workspace knowledge nodes and multi-agent execution traces in SQLite with instant run history replay and automatic browser fallback mode.
 
 ---
 
