@@ -1,15 +1,14 @@
-# 🧠 AetherMind — AI Multi-Agent Workspace & Knowledge Graph
+# 🧠 AetherMind — AI Research & Decision Copilot
 
-> **Ultra-Tier Portfolio Flagship** — An interactive multi-agent research & engineering workspace that orchestrates specialized AI agents in real time, indexes knowledge with hybrid vector search, and visualizes reasoning as a live interactive Knowledge Graph.
+> **Turn scattered notes, study materials, and docs into a verified Action Brief and visual Mind-Map.**
 
 ---
 
-## ✨ Planned Architecture & Core Capabilities
+## ✨ What It Does
 
-- **Multi-Agent Orchestration Pipeline:** Coordinated 4-stage pipeline (`Planner` → `Researcher` → `Synthesizer` → `Critic`) streaming reasoning steps and latency telemetry over WebSockets.
-- **Live Knowledge Graph Canvas:** Interactive pan, zoom, and draggable SVG node-and-edge graph linking objectives, agents, retrieved vector evidence, and synthesized blueprints with a Node Inspector.
-- **Hybrid Vector Search Engine:** TF-IDF cosine-similarity retrieval with metadata boosting, matched-term highlights, and live node ingestion.
-- **SQLite Persistence & Run Replay:** Persists workspace knowledge nodes and multi-agent execution traces in SQLite with instant run history replay and automatic browser fallback mode.
+1. **Add or Pick Your Notes:** Start with built-in Knowledge Packs (*AI & Data Science Study Notes*, *SaaS Launch Playbook*, *System Design*) or add/upload your own `.md` / `.txt` notes.
+2. **Ask a Goal or Question:** Ask what you want to decide, compare, or plan.
+3. **4-Agent AI Team Collaborates Live:** `Strategist` → `Researcher` → `Writer` → `Fact-Checker` stream progress over WebSockets, extract grounded evidence, build a visual **Source Mind-Map**, and write a **Verified Action Brief** you can copy or export as Markdown.
 
 ---
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { RunResult, SearchResult, WorkspaceDoc } from "@/lib/types";
 
 interface KnowledgeSidebarProps {
@@ -38,8 +38,9 @@ export function KnowledgeSidebar({
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tagsRaw, setTagsRaw] = useState("");
-  const [category, setCategory] = useState("Architecture");
+  const [category, setCategory] = useState("My Notes");
   const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function handleCreateDoc(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +66,20 @@ export function KnowledgeSidebar({
     }
   }
 
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const cleanTitle = file.name.replace(/\.(md|txt)$/i, "");
+    await onAddDoc({
+      title: cleanTitle,
+      content: text.slice(0, 12000),
+      tags: ["uploaded"],
+      category: "Uploaded",
+    });
+    e.target.value = "";
+  }
+
   return (
     <aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#080d18]/90">
       {/* Tabs */}
@@ -74,46 +89,62 @@ export function KnowledgeSidebar({
           onClick={() => setTab("knowledge")}
           className={`rounded-xl py-2 text-xs font-semibold transition ${
             tab === "knowledge"
-              ? "bg-violet-500/20 text-violet-200 border border-violet-400/30"
+              ? "border border-violet-400/30 bg-violet-500/20 text-violet-200"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
-          Knowledge ({docs.length})
+          Your Notes ({docs.length})
         </button>
         <button
           type="button"
           onClick={() => setTab("history")}
           className={`rounded-xl py-2 text-xs font-semibold transition ${
             tab === "history"
-              ? "bg-violet-500/20 text-violet-200 border border-violet-400/30"
+              ? "border border-violet-400/30 bg-violet-500/20 text-violet-200"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
-          Runs ({runs.length})
+          Saved Briefs ({runs.length})
         </button>
       </div>
 
       {tab === "knowledge" ? (
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-          {/* Vector Search Bar */}
-          <div className="flex items-center gap-2">
+          {/* Search + Add + Upload */}
+          <div className="flex flex-col gap-2">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Vector search (rag, crdt, ws...)"
+              placeholder="Search notes (rag, pricing, caching...)"
               className="w-full rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-violet-400"
             />
-            <button
-              type="button"
-              onClick={() => setShowAddForm((v) => !v)}
-              className="shrink-0 rounded-xl border border-violet-400/30 bg-violet-500/15 px-3 py-2 text-xs font-semibold text-violet-200 hover:bg-violet-500/25"
-            >
-              {showAddForm ? "Close" : "+ Node"}
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddForm((v) => !v)}
+                className="rounded-xl border border-violet-400/30 bg-violet-500/15 px-3 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/25"
+              >
+                {showAddForm ? "Close" : "+ Add Note"}
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Upload .md/.txt
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".md,.txt,text/plain,text/markdown"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </div>
           </div>
 
-          {/* Add Document Form */}
+          {/* Add Note Form */}
           {showAddForm && (
             <form
               onSubmit={handleCreateDoc}
@@ -123,7 +154,7 @@ export function KnowledgeSidebar({
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Knowledge node title"
+                placeholder="Note title (e.g. Lecture 4: Transformers)"
                 className="rounded-lg border border-white/10 bg-slate-900 px-2.5 py-1.5 text-xs text-white outline-none focus:border-violet-400"
                 required
               />
@@ -131,7 +162,7 @@ export function KnowledgeSidebar({
                 rows={3}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Technical notes, architecture spec, or findings..."
+                placeholder="Paste study notes, ideas, or research findings..."
                 className="rounded-lg border border-white/10 bg-slate-900 px-2.5 py-1.5 text-xs text-white outline-none focus:border-violet-400"
                 required
               />
@@ -140,7 +171,7 @@ export function KnowledgeSidebar({
                   type="text"
                   value={tagsRaw}
                   onChange={(e) => setTagsRaw(e.target.value)}
-                  placeholder="tags: rag, ai"
+                  placeholder="tags: study, ai"
                   className="rounded-lg border border-white/10 bg-slate-900 px-2.5 py-1.5 text-xs text-white outline-none focus:border-violet-400"
                 />
                 <select
@@ -148,10 +179,10 @@ export function KnowledgeSidebar({
                   onChange={(e) => setCategory(e.target.value)}
                   className="rounded-lg border border-white/10 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
                 >
-                  <option value="Architecture">Architecture</option>
+                  <option value="My Notes">My Notes</option>
                   <option value="AI / ML">AI / ML</option>
-                  <option value="Systems">Systems</option>
-                  <option value="Custom">Custom</option>
+                  <option value="Product">Product</option>
+                  <option value="Architecture">Architecture</option>
                 </select>
               </div>
               <button
@@ -159,20 +190,20 @@ export function KnowledgeSidebar({
                 disabled={saving}
                 className="rounded-lg bg-violet-600 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
               >
-                {saving ? "Indexing..." : "Index in Vector Store"}
+                {saving ? "Saving..." : "Save Note to Knowledge Base"}
               </button>
             </form>
           )}
 
-          {/* Vector Search Hits */}
+          {/* Search Hits */}
           {searchQuery.trim().length > 0 ? (
             <div className="flex flex-col gap-2">
               <p className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-                Vector Matches ({searchResults.length})
+                Matching Notes ({searchResults.length})
               </p>
               {searchResults.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-white/10 p-4 text-center text-xs text-slate-500">
-                  No matching documents found.
+                  No matching notes found.
                 </div>
               ) : (
                 searchResults.map((hit) => (
@@ -207,7 +238,6 @@ export function KnowledgeSidebar({
               )}
             </div>
           ) : (
-            /* Full Document List */
             <div className="flex flex-col gap-2">
               {docs.map((doc) => (
                 <div
@@ -231,7 +261,7 @@ export function KnowledgeSidebar({
                         onDeleteDoc(doc.doc_id);
                       }}
                       className="rounded px-1.5 py-0.5 text-[11px] text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-rose-500/20 hover:text-rose-300"
-                      title="Delete node"
+                      title="Delete note"
                     >
                       ✕
                     </button>
@@ -257,11 +287,10 @@ export function KnowledgeSidebar({
           )}
         </div>
       ) : (
-        /* Run History Tab */
         <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
           {runs.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/10 p-4 text-center text-xs text-slate-500">
-              Run an objective to record trace history.
+              Ask a goal to save your first Action Brief.
             </div>
           ) : (
             runs.map((run) => {
@@ -279,7 +308,7 @@ export function KnowledgeSidebar({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                      {run.confidence}% confidence
+                      {run.confidence}% grounded
                     </span>
                     <span className="text-[10px] text-slate-400">
                       {run.duration_ms}ms
@@ -289,7 +318,7 @@ export function KnowledgeSidebar({
                     {run.objective}
                   </p>
                   <span className="text-[10px] text-slate-500">
-                    {run.graph.nodes.length} nodes · {run.graph.edges.length} edges
+                    {run.brief?.citations?.length ?? 0} sources cited
                   </span>
                 </button>
               );

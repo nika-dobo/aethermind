@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActionBriefPanel } from "@/components/ActionBriefPanel";
 import { AgentTracePanel } from "@/components/AgentTracePanel";
 import { KnowledgeGraph } from "@/components/KnowledgeGraph";
 import { KnowledgeSidebar } from "@/components/KnowledgeSidebar";
 import {
-  STARTER_DOCS,
+  KNOWLEDGE_PACKS,
+  type KnowledgePackMeta,
   runLocalOrchestrator,
   searchLocalDocs,
 } from "@/lib/localEngine";
@@ -22,43 +24,42 @@ const WS_URL =
   process.env.NEXT_PUBLIC_WS_URL ||
   API_URL.replace(/^http/, "ws") + "/ws/workspace";
 
-const PRESET_OBJECTIVES = [
-  "Design a hybrid vector search + multi-agent reasoning graph",
-  "Optimize WebSocket streaming backpressure and latency",
-  "Architect distributed CRDT collaborative graph canvas",
-];
-
-const INITIAL_RUN = runLocalOrchestrator(STARTER_DOCS, PRESET_OBJECTIVES[0], 4);
+const DEFAULT_PACK = KNOWLEDGE_PACKS[0];
+const INITIAL_RUN = runLocalOrchestrator(
+  DEFAULT_PACK.docs,
+  DEFAULT_PACK.presets[0],
+  4
+);
 
 function makeQueuedSteps(): AgentStep[] {
   return [
     {
-      agent: "Planner",
-      role: "Task Decomposition",
+      agent: "Strategist",
+      role: "Goal Breakdown",
       status: "running",
       latency_ms: 0,
-      output: "Decomposing objective into retrieval & synthesis tracks...",
+      output: "Breaking your goal into focused research tracks...",
       highlights: [],
     },
     {
       agent: "Researcher",
-      role: "Hybrid Vector Retrieval",
+      role: "Note Retrieval",
       status: "waiting",
       latency_ms: 0,
       output: "",
       highlights: [],
     },
     {
-      agent: "Synthesizer",
-      role: "Knowledge Graph Builder",
+      agent: "Writer",
+      role: "Action Brief & Map",
       status: "waiting",
       latency_ms: 0,
       output: "",
       highlights: [],
     },
     {
-      agent: "Critic",
-      role: "Verification & Risk Audit",
+      agent: "Fact-Checker",
+      role: "Grounding Audit",
       status: "waiting",
       latency_ms: 0,
       output: "",
@@ -68,11 +69,17 @@ function makeQueuedSteps(): AgentStep[] {
 }
 
 export default function WorkspacePage() {
-  const [objective, setObjective] = useState(PRESET_OBJECTIVES[0]);
-  const [docs, setDocs] = useState<WorkspaceDoc[]>(STARTER_DOCS);
+  const [activePackId, setActivePackId] = useState<KnowledgePackMeta["id"]>(
+    DEFAULT_PACK.id
+  );
+  const [objective, setObjective] = useState(DEFAULT_PACK.presets[0]);
+  const [docs, setDocs] = useState<WorkspaceDoc[]>(DEFAULT_PACK.docs);
   const [runs, setRuns] = useState<RunResult[]>([INITIAL_RUN]);
   const [activeRun, setActiveRun] = useState<RunResult>(INITIAL_RUN);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [centerView, setCenterView] = useState<"split" | "brief" | "map">(
+    "split"
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [remoteSearchResults, setRemoteSearchResults] = useState<SearchResult[] | null>(
     null
@@ -85,6 +92,12 @@ export default function WorkspacePage() {
   );
 
   const wsRef = useRef<WebSocket | null>(null);
+
+  const currentPack = useMemo(
+    () =>
+      KNOWLEDGE_PACKS.find((p) => p.id === activePackId) ?? KNOWLEDGE_PACKS[0],
+    [activePackId]
+  );
 
   const hydrateFromBackend = useCallback(async () => {
     try {
@@ -106,9 +119,14 @@ export default function WorkspacePage() {
 
       if (runsRes.ok) {
         const runsJson = await runsRes.json();
-        if (Array.isArray(runsJson.runs) && runsJson.runs.length > 0) {
-          setRuns(runsJson.runs);
-          setActiveRun(runsJson.runs[0]);
+        const validRuns = Array.isArray(runsJson.runs)
+          ? runsJson.runs.filter(
+              (r: RunResult) => r.brief && r.brief.executive_summary
+            )
+          : [];
+        if (validRuns.length > 0) {
+          setRuns(validRuns);
+          setActiveRun(validRuns[0]);
         }
       }
       setTransportMode("rest");
@@ -227,12 +245,20 @@ export default function WorkspacePage() {
     [activeRun.steps]
   );
 
-  async function handleRunObjective(customObjective?: string) {
+  async function handleRunObjective(
+    customObjective?: string,
+    overrideDocs?: WorkspaceDoc[]
+  ) {
     const target = (customObjective ?? objective).trim();
+    const activeDocs = overrideDocs ?? docs;
     if (target.length < 2 || isStreaming) return;
     setSelectedNodeId(null);
 
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (
+      !overrideDocs &&
+      wsRef.current &&
+      wsRef.current.readyState === WebSocket.OPEN
+    ) {
       setIsStreaming(true);
       setTransportMode("websocket");
       wsRef.current.send(JSON.stringify({ objective: target, top_k: 4 }));
@@ -260,10 +286,9 @@ export default function WorkspacePage() {
       }
     }
 
-    // Smooth deterministic local engine streaming fallback
     setTransportMode("local");
     setIsStreaming(true);
-    const localResult = runLocalOrchestrator(docs, target, 4);
+    const localResult = runLocalOrchestrator(activeDocs, target, 4);
     const staged = makeQueuedSteps();
     setActiveRun({ ...localResult, steps: staged });
 
@@ -284,6 +309,35 @@ export default function WorkspacePage() {
     setIsStreaming(false);
   }
 
+  async function handleSwitchPack(pack: KnowledgePackMeta) {
+    setActivePackId(pack.id);
+    setObjective(pack.presets[0]);
+    setSearchQuery("");
+    setSelectedNodeId(null);
+
+    let nextDocs = pack.docs;
+    if (backendOnline) {
+      try {
+        const res = await fetch(`${API_URL}/api/packs/load`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pack_id: pack.id }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.documents)) {
+            nextDocs = data.documents;
+          }
+        }
+      } catch {
+        setBackendOnline(false);
+      }
+    }
+
+    setDocs(nextDocs);
+    await handleRunObjective(pack.presets[0], nextDocs);
+  }
+
   async function handleAddDoc(input: {
     title: string;
     content: string;
@@ -295,7 +349,7 @@ export default function WorkspacePage() {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "")
-        .slice(0, 32) || "node";
+        .slice(0, 32) || "note";
     const doc_id = `${slug}-${Date.now().toString(36).slice(-4)}`;
 
     if (backendOnline) {
@@ -338,71 +392,119 @@ export default function WorkspacePage() {
     setSelectedNodeId(node ? node.id : null);
   }
 
+  function handleFocusDocNode(docId: string) {
+    setSelectedNodeId(`doc:${docId}`);
+    if (centerView === "brief") {
+      setCenterView("split");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#06090f] text-slate-100">
-      {/* Subtle Ambient Background */}
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,rgba(124,58,237,0.14),transparent_55%)]" />
 
-      <div className="relative mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-5 sm:px-6">
-        {/* Top Command Header */}
-        <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#080d18]/90 px-5 py-4 backdrop-blur-xl">
-          <div className="flex items-center gap-3.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-400/40 bg-gradient-to-br from-violet-600/30 to-indigo-600/30 text-lg shadow-[0_0_24px_rgba(139,92,246,0.28)]">
-              🧠
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold tracking-tight text-white">
-                  AetherMind
-                </h1>
-                <span className="rounded-full border border-violet-400/30 bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-violet-200 uppercase">
-                  Ultra Workspace
-                </span>
+      <div className="relative mx-auto flex max-w-[1640px] flex-col gap-4 px-4 py-4 sm:px-6">
+        {/* Top Purpose & Status Bar */}
+        <header className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#080d18]/90 px-5 py-4 backdrop-blur-xl">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-400/40 bg-gradient-to-br from-violet-600/30 to-indigo-600/30 text-lg shadow-[0_0_24px_rgba(139,92,246,0.28)]">
+                🧠
               </div>
-              <p className="text-xs text-slate-400">
-                Multi-Agent Orchestrator · Hybrid Vector Search · Live Knowledge Graph
-              </p>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-lg font-bold tracking-tight text-white">
+                    AetherMind
+                  </h1>
+                  <span className="rounded-full border border-violet-400/30 bg-violet-500/15 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-violet-200 uppercase">
+                    AI Research &amp; Decision Copilot
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Turn scattered notes &amp; docs into a verified Action Brief and visual Mind-Map.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
+                  wsConnected
+                    ? "border-emerald-400/35 bg-emerald-500/10 text-emerald-200"
+                    : backendOnline
+                      ? "border-sky-400/35 bg-sky-500/10 text-sky-200"
+                      : "border-amber-400/30 bg-amber-500/10 text-amber-200"
+                }`}
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    wsConnected
+                      ? "animate-pulse bg-emerald-400"
+                      : backendOnline
+                        ? "bg-sky-400"
+                        : "bg-amber-400"
+                  }`}
+                />
+                {wsConnected
+                  ? "FastAPI WebSocket Live"
+                  : backendOnline
+                    ? "FastAPI REST Online"
+                    : "Local Engine Mode"}
+              </div>
+              {!backendOnline && (
+                <button
+                  type="button"
+                  onClick={hydrateFromBackend}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+                >
+                  Reconnect API
+                </button>
+              )}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div
-              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
-                wsConnected
-                  ? "border-emerald-400/35 bg-emerald-500/10 text-emerald-200"
-                  : backendOnline
-                    ? "border-sky-400/35 bg-sky-500/10 text-sky-200"
-                    : "border-amber-400/30 bg-amber-500/10 text-amber-200"
-              }`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  wsConnected
-                    ? "animate-pulse bg-emerald-400"
-                    : backendOnline
-                      ? "bg-sky-400"
-                      : "bg-amber-400"
-                }`}
-              />
-              {wsConnected
-                ? "FastAPI WebSocket Live"
-                : backendOnline
-                  ? "FastAPI REST Online"
-                  : "Local Engine Mode"}
+          {/* 3-Step Clarity Guide + Knowledge Pack Switcher */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+              <span className="rounded-md bg-white/5 px-2 py-1 text-slate-200">
+                1. Add or pick notes
+              </span>
+              <span>→</span>
+              <span className="rounded-md bg-white/5 px-2 py-1 text-slate-200">
+                2. Ask your goal
+              </span>
+              <span>→</span>
+              <span className="rounded-md bg-white/5 px-2 py-1 text-slate-200">
+                3. Get verified Action Brief + Mind-Map
+              </span>
             </div>
-            {!backendOnline && (
-              <button
-                type="button"
-                onClick={hydrateFromBackend}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
-              >
-                Reconnect API
-              </button>
-            )}
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-[11px] text-slate-500">
+                Sample Packs:
+              </span>
+              {KNOWLEDGE_PACKS.map((pack) => {
+                const isSelected = pack.id === activePackId;
+                return (
+                  <button
+                    key={pack.id}
+                    type="button"
+                    onClick={() => handleSwitchPack(pack)}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-medium transition ${
+                      isSelected
+                        ? "border-violet-400/50 bg-violet-500/20 text-violet-100"
+                        : "border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    {pack.badge}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </header>
 
-        {/* Objective Prompt Bar */}
+        {/* Goal / Question Bar */}
         <section className="rounded-2xl border border-white/10 bg-[#080d18]/90 p-4">
           <form
             onSubmit={(e) => {
@@ -415,7 +517,7 @@ export default function WorkspacePage() {
               type="text"
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
-              placeholder="Enter a complex architecture or AI research objective..."
+              placeholder="Ask a question or goal based on your notes..."
               className="flex-1 rounded-xl border border-white/10 bg-slate-950/85 px-4 py-3 text-sm text-white placeholder-slate-500 outline-none focus:border-violet-400"
             />
             <button
@@ -423,33 +525,59 @@ export default function WorkspacePage() {
               disabled={isStreaming}
               className="rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_24px_rgba(124,58,237,0.35)] transition hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50"
             >
-              {isStreaming ? "Orchestrating..." : "Run Multi-Agent Graph"}
+              {isStreaming ? "Generating Brief..." : "Generate Action Brief"}
             </button>
           </form>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-medium text-slate-500">
-              Presets:
-            </span>
-            {PRESET_OBJECTIVES.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => {
-                  setObjective(preset);
-                  handleRunObjective(preset);
-                }}
-                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-slate-300 transition hover:border-violet-400/40 hover:bg-violet-500/10 hover:text-white"
-              >
-                {preset}
-              </button>
-            ))}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-medium text-slate-500">
+                Try asking:
+              </span>
+              {currentPack.presets.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => {
+                    setObjective(preset);
+                    handleRunObjective(preset);
+                  }}
+                  className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-slate-300 transition hover:border-violet-400/40 hover:bg-violet-500/10 hover:text-white"
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+
+            {/* Center View Mode Switcher */}
+            <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-slate-950/80 p-1">
+              {(
+                [
+                  { id: "split", label: "✨ Brief + Map" },
+                  { id: "brief", label: "📄 Action Brief" },
+                  { id: "map", label: "🕸️ Mind-Map" },
+                ] as const
+              ).map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  onClick={() => setCenterView(view.id)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                    centerView === view.id
+                      ? "bg-violet-500/25 text-violet-100"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {view.label}
+                </button>
+              ))}
+            </div>
           </div>
         </section>
 
-        {/* 3-Column Mission Control Grid */}
-        <div className="grid gap-5 lg:grid-cols-[310px_minmax(0,1fr)_330px]">
-          <div className="h-[600px]">
+        {/* Main 3-Column Workspace */}
+        <div className="grid gap-4 lg:grid-cols-[290px_minmax(0,1fr)_300px]">
+          <div className="h-[640px]">
             <KnowledgeSidebar
               docs={docs}
               searchQuery={searchQuery}
@@ -464,21 +592,48 @@ export default function WorkspacePage() {
                 setObjective(run.objective);
                 setSelectedNodeId(null);
               }}
-              onSelectDocNode={(docId) => setSelectedNodeId(`doc:${docId}`)}
+              onSelectDocNode={handleFocusDocNode}
             />
           </div>
 
-          <div className="h-[600px]">
-            <KnowledgeGraph
-              graph={activeRun.graph}
-              isStreaming={isStreaming}
-              activeAgent={activeAgent}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={handleSelectNode}
-            />
+          <div className="h-[640px]">
+            {centerView === "brief" ? (
+              <ActionBriefPanel
+                brief={activeRun.brief}
+                confidence={activeRun.confidence}
+                onHighlightCitation={handleFocusDocNode}
+              />
+            ) : centerView === "map" ? (
+              <KnowledgeGraph
+                graph={activeRun.graph}
+                isStreaming={isStreaming}
+                activeAgent={activeAgent}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={handleSelectNode}
+              />
+            ) : (
+              <div className="grid h-full gap-4 xl:grid-cols-2">
+                <div className="min-h-0">
+                  <ActionBriefPanel
+                    brief={activeRun.brief}
+                    confidence={activeRun.confidence}
+                    onHighlightCitation={handleFocusDocNode}
+                  />
+                </div>
+                <div className="min-h-0">
+                  <KnowledgeGraph
+                    graph={activeRun.graph}
+                    isStreaming={isStreaming}
+                    activeAgent={activeAgent}
+                    selectedNodeId={selectedNodeId}
+                    onSelectNode={handleSelectNode}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="h-[600px]">
+          <div className="h-[640px]">
             <AgentTracePanel
               steps={activeRun.steps}
               confidence={activeRun.confidence}

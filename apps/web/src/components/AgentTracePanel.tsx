@@ -21,7 +21,7 @@ export function AgentTracePanel({
     <aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#080d18]/90">
       <div className="flex items-center justify-between border-b border-white/10 bg-slate-950/60 px-4 py-3">
         <h2 className="text-xs font-semibold tracking-wider text-slate-200 uppercase">
-          Multi-Agent Trace
+          AI Team Progress
         </h2>
         <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold text-slate-300 uppercase">
           {transportMode === "websocket"

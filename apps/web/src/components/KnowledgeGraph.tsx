@@ -52,11 +52,11 @@ function computeInitialPositions(nodes: GraphNode[]): Record<string, Point> {
 
   const fixedCoords: Record<string, Point> = {
     "query:root": { x: 460, y: 72 },
-    "agent:planner": { x: 240, y: 195 },
+    "agent:strategist": { x: 240, y: 195 },
     "agent:researcher": { x: 460, y: 195 },
-    "agent:synthesizer": { x: 460, y: 405 },
+    "agent:writer": { x: 460, y: 405 },
     "synthesis:blueprint": { x: 685, y: 405 },
-    "agent:critic": { x: 685, y: 195 },
+    "agent:checker": { x: 685, y: 195 },
   };
 
   for (const node of nodes) {
@@ -155,7 +155,7 @@ export function KnowledgeGraph({
         <div className="flex items-center gap-2.5">
           <span className="h-2.5 w-2.5 rounded-full bg-violet-400 shadow-[0_0_10px_#a78bfa]" />
           <h2 className="text-xs font-semibold tracking-wider text-slate-200 uppercase">
-            Live Knowledge Graph
+            Source Mind-Map
           </h2>
           <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-slate-400">
             {graph.nodes.length} nodes · {graph.edges.length} edges

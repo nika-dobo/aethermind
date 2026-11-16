@@ -50,11 +50,29 @@ export interface KnowledgeGraphData {
   edges: GraphEdge[];
 }
 
+export interface BriefCitation {
+  doc_id: string;
+  title: string;
+  category: string;
+  score: number;
+  matched_terms: string[];
+}
+
+export interface ActionBrief {
+  headline: string;
+  executive_summary: string;
+  key_findings: string[];
+  action_plan: string[];
+  risks_and_gaps: string[];
+  citations: BriefCitation[];
+}
+
 export interface RunResult {
   run_id: string;
   objective: string;
   confidence: number;
   duration_ms: number;
+  brief: ActionBrief;
   steps: AgentStep[];
   graph: KnowledgeGraphData;
   created_at?: string;
