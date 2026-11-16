@@ -137,7 +137,13 @@ export default function WorkspacePage() {
   }, []);
 
   useEffect(() => {
-    hydrateFromBackend();
+    const isHttpsToLocalhost =
+      typeof window !== "undefined" &&
+      window.location.protocol === "https:" &&
+      API_URL.startsWith("http://localhost");
+    if (!isHttpsToLocalhost) {
+      hydrateFromBackend();
+    }
   }, [hydrateFromBackend]);
 
   useEffect(() => {
